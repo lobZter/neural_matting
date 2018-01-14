@@ -4,17 +4,25 @@ import cv2
 import numpy as np
 from sklearn.preprocessing import normalize
 
-IMG_ROOT = "rgb_img"
-ALPHA_KNN_ROOT = "alpha_knn"
-ALPHA_CF_ROOT = "alpha_cf"
-ALPHA_GT_ROOT = "alpha_gt"
-OUTPUT_ROOT = "npz_s"
+PROJ_ROOT = "/home/lobst3rd/neural_matting"
+DATA_PATH = os.path.join(PROJ_ROOT, "dataset")
+IMG_ROOT = os.path.join(DATA_PATH, "rgb_img")
+ALPHA_KNN_ROOT = os.path.join(DATA_PATH, "alpha_knn")
+ALPHA_CF_ROOT = os.path.join(DATA_PATH, "alpha_cf")
+ALPHA_GT_ROOT = os.path.join(DATA_PATH, "alpha_gt")
+OUTPUT_ROOT = os.path.join(DATA_PATH, "npy")
 
 PATCH_SIZE = 32 # same as cifar-10
 
-index = [13, 17, 20]
+index = range(1, 28)
+
+print(os.listdir(ALPHA_KNN_ROOT))
+print(os.listdir(ALPHA_CF_ROOT))
 
 for idx in index:
+    if not str(idx) in os.listdir(ALPHA_KNN_ROOT) or not str(idx) in os.listdir(ALPHA_CF_ROOT):
+        continue
+
     print("idx: %d" % (idx))
 
     IMG_PATH =       os.path.join(IMG_ROOT,       str(idx))
@@ -47,10 +55,11 @@ for idx in index:
 
             # rgb image
             rgb_img = cv2.imread(os.path.join(IMG_PATH, filename))
+            alpha_knn = alpha_knn / 255.0
             # normalize image
-            rgb_img = rgb_img.reshape((-1, 3))
-            normalize(rgb_img, norm="l2", axis=1)
-            rgb_img = rgb_img.reshape((alpha_cf.shape[0], alpha_cf.shape[1], 3))
+            # rgb_img = rgb_img.reshape((-1, 3))
+            # normalize(rgb_img, norm="l2", axis=1)
+            # rgb_img = rgb_img.reshape((alpha_cf.shape[0], alpha_cf.shape[1], 3))
 
 
             # concatenate three inputs and ground truth alpha
@@ -65,7 +74,7 @@ for idx in index:
                         train_data.append(patch)
                 
     print("data length: %d" % (len(train_data)))
-    save_file = os.path.join(OUTPUT_ROOT, "%d.npz" %(idx))
+    save_file = os.path.join(OUTPUT_ROOT, "%d.npy" %(idx))
     np.save(save_file, train_data)
     train_data.clear()
     del train_data[:]
