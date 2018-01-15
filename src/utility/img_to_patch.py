@@ -10,7 +10,7 @@ IMG_ROOT = os.path.join(DATA_PATH, "rgb_img")
 ALPHA_KNN_ROOT = os.path.join(DATA_PATH, "alpha_knn")
 ALPHA_CF_ROOT = os.path.join(DATA_PATH, "alpha_cf")
 ALPHA_GT_ROOT = os.path.join(DATA_PATH, "alpha_gt")
-OUTPUT_ROOT = os.path.join(DATA_PATH, "npy")
+OUTPUT_ROOT = os.path.join(DATA_PATH, "npy_norm")
 
 PATCH_SIZE = 32 # same as cifar-10
 
@@ -55,11 +55,11 @@ for idx in index:
 
             # rgb image
             rgb_img = cv2.imread(os.path.join(IMG_PATH, filename))
-            alpha_knn = alpha_knn / 255.0
+            rgb_img = rgb_img / 255.0
             # normalize image
-            # rgb_img = rgb_img.reshape((-1, 3))
-            # normalize(rgb_img, norm="l2", axis=1)
-            # rgb_img = rgb_img.reshape((alpha_cf.shape[0], alpha_cf.shape[1], 3))
+            rgb_img = rgb_img.reshape((-1, 3))
+            normalize(rgb_img, norm="l2", axis=1)
+            rgb_img = rgb_img.reshape((alpha_cf.shape[0], alpha_cf.shape[1], 3))
 
 
             # concatenate three inputs and ground truth alpha
