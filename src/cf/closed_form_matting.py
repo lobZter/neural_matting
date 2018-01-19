@@ -6,66 +6,43 @@ import scipy.sparse
 import scipy.sparse.linalg
 import os
 
-def _rolling_block(A, block=(3, 3)):
-    # Applies sliding window to given matrix.
-    shape = (A.shape[0] - block[0] + 1, A.shape[1] - block[1] + 1) + block
-    strides = (A.strides[0], A.strides[1]) + A.strides
-    return as_strided(A, shape=shape, strides=strides)
-
-
-def compute_laplacian(img, mask=None, eps=10**(-7), win_rad=1):
-    win_size = (win_rad * 2 + 1) ** 2
-    h, w, d = img.shape
-    # Number of window centre indices in h, w axes
-    c_h, c_w = h - 2 * win_rad, w - 2 * win_rad
-    win_diam = win_rad * 2 + 1
-    indsM = np.arange(h * w).reshape((h, w))
-    ravelImg = img.reshape(h * w, d)
-    win_inds = _rolling_block(indsM, block=(win_diam, win_diam))
-    win_inds = win_inds.reshape(c_h, c_w, win_size)
-    win_inds = win_inds.reshape(-1, win_size)
-    winI = ravelImg[win_inds] # (43571, 9, 3)
+def compute_laplacian(img):
+    eps = 1e-7
+    img_h, img_w, img_d = img.shape
+    idx_mat = np.arange(img_h * img_w).reshape((img_h, img_w))
+    shape = (img_h - 3 + 1, img_w - 3 + 1, 3, 3)
+    strides = (idx_mat.strides[0], idx_mat.strides[1]) + idx_mat.strides
+    win_idx = as_strided(idx_mat, shape=shape, strides=strides).reshape(-1, 9)
+    img = img.reshape(img_h * img_w, img_d)
+    winI = img[win_idx]
 
     win_mu = np.mean(winI, axis=1, keepdims=True)
-    # print win_mu.shape # (43571, 3)
-    # print win_var.shape # (43571, 3, 3)
-    win_var = np.einsum('...ji,...jk ->...ik', winI, winI) / win_size - np.einsum('...ji,...jk ->...ik', win_mu, win_mu)
-    # win_var = np.array([np.cov(win.T) for win in winI]) / 9 * 8
-
-    inv = np.linalg.inv(win_var + (eps/win_size)*np.eye(3)) # element-wise add
-    # print inv.shape # (43571, 3, 3)
+    win_var = np.array([np.cov(win.T) for win in winI]) / 9 * 8
+    inv = np.linalg.inv(win_var + (eps / 9) * np.eye(3)) # element-wise add
 
     X = np.einsum('...ij,...jk->...ik', winI - win_mu, inv) # transpose and do dot product on last two axis
-    vals = np.eye(win_size) - (1/win_size)*(1 + np.einsum('...ij,...kj->...ik', X, winI - win_mu))
-    # print vals.shape # (43571, 9, 9)
-
-
-    nz_indsCol = np.tile(win_inds, win_size).ravel()
-    nz_indsRow = np.repeat(win_inds, win_size).ravel()
-    nz_indsVal = vals.ravel()
-    L = scipy.sparse.coo_matrix((nz_indsVal, (nz_indsRow, nz_indsCol)))
-    # print L.shape # (44415, 44415)
-    return L
+    X = np.einsum('...ij,...kj->...ik', X, winI - win_mu) # dot product
+    L = np.eye(9) - (1 + X) / 9
+    
+    row_idx = np.repeat(win_idx, 9).ravel()
+    col_idx = np.tile(win_idx, 9).ravel()
+    return scipy.sparse.coo_matrix((L.flatten(), (row_idx, col_idx)))
 
 def closed_form_matting(image, trimap):
     constraint_px = (trimap < 0.1) | (trimap > 0.9)
     Lambda = 100.0
     laplacian = compute_laplacian(image)
     alpha = scipy.sparse.linalg.spsolve(
-        laplacian + scipy.sparse.diags((Lambda * constraint_px).ravel()),
-        trimap.ravel() * (Lambda * constraint_px).ravel())
+        laplacian + scipy.sparse.diags((Lambda * constraint_px).flatten()),
+        trimap.flatten() * (Lambda * constraint_px).flatten())
     alpha = np.minimum(np.maximum(alpha.reshape(trimap.shape), 0), 1)
     return alpha
 
+IMG_PATH = "test/source.png"
+TRIMAP_PATH = "test/trimap.png"
+OUTPUT_PATH = "test/alpha.png"
 
-todos = [117, 136, 155, 174]
-
-for todo in todos:
-    IMG_PATH = "/media/lobst3rd/DATA/dataset/matting/output/1/%d.png" % (todo)
-    TRIMAP_PATH = "/media/lobst3rd/DATA/dataset/matting/train/trimap_training_lowres/Trimap1/GT01.png"
-    OUTPUT_PATH = "/media/lobst3rd/DATA/dataset/matting/numpy/alpha_cf/1/%d.png" % (todo)
-
-    image = imageio.imread(IMG_PATH) / 255.0
-    trimap = imageio.imread(TRIMAP_PATH) / 255.0
-    alpha = closed_form_matting(image, trimap)
-    imageio.imwrite(OUTPUT_PATH, alpha * 255.0)
+image = imageio.imread(IMG_PATH) / 255.0
+trimap = imageio.imread(TRIMAP_PATH) / 255.0
+alpha = closed_form_matting(image, trimap)
+imageio.imwrite(OUTPUT_PATH, alpha * 255.0)
